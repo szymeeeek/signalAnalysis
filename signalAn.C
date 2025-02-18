@@ -25,7 +25,8 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
     std::string branchName = Form("%s_%s", fileID.c_str(), no.c_str());
     signTree->Branch(branchName.c_str(), &ms);
 
-    Double_t aMax, aThr, t0, t1, Q, TOT;
+    Double_t aMax, aThr, Q;
+    Long_t t0, t1, TOT;
     Int_t t0i, t1i;
     Int_t baselineCount = 100;
 
@@ -50,7 +51,7 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
 
         for(Int_t i = 0; i<nSamples; i++){
             std::getline(data, line, ',');
-            time = line.empty() ? 0 : stod(line);
+            time = line.empty() ? 0 : stod(line)*1e12;
             std::getline(data, line, '\n');
             voltage = line.empty() ? 0 : stod(line);
 
@@ -62,7 +63,9 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
         }
         signHisto->SetBins(nSamples, times.at(0), times.at(times.size()-1));
 
+
         /*Calculating the parameters from the signals*/
+        
         //1. amplitude
         aMax = signHisto->GetMaximum();
 
@@ -124,13 +127,99 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
     return kTRUE;
 }
 
-Bool_t histosMaking(std::string rootFile = "20250213"){
-    std::string filename = Form("%ssignalSaved", rootFile.c_str());
+Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
+    std::string filename = Form("%ssignalSaved.root", rootFile.c_str());
     TFile *infile = new TFile(filename.c_str(), "READ");
-
     if(!infile){
         std::cout<<"Something's wrong! File couldn't be opened!"<<std::endl;
+        return kFALSE;
     }
+
+    std::string branchName = Form("%s_%s", rootFile.c_str(), no.c_str());
+    TTree *tree = (TTree*)infile->Get("signTree");
+    if (!tree) {
+        std::cout << "Tree not found!" << std::endl;
+        return kFALSE;
+    }
+
+    Double_t aMax, Q;
+    Long_t t0, TOT;
+    Int_t nEntries = tree->GetEntries();
+    tree->SetBranchAddress("t0", &t0);
+    tree->SetBranchAddress("TOT", &TOT);
+    tree->SetBranchAddress("aMax", &aMax);
+    tree->SetBranchAddress("Q", &Q);
+
+    TH1D *Qh = new TH1D("Qh", "Q", 100, 80, 100);
+    TH1D *aMaxh = new TH1D("aMaxh", "aMax", 100, 0, 2);
+    TH1L *TOTh = new TH1L("TOTh", "TOT", 100, 8e4, 11e4);
+    TH1L *t0h = new TH1L("t0h", "t0", 100, 1e10, 1e12);
+    TH2D *aMaxQh = new TH2D("aMaxQh", "aMax vs. Q", 100, 0, 2, 100, 80, 100);
+    TH2D *Qt0h = new TH2D("Qt0h", "Q vs. t0", 100, 80, 100, 100, 1e10, 1e12);
+
+    for(Int_t i = 0; i < nEntries; i++){
+        tree->GetEntry(i);
+
+        t0h->Fill(t0);
+        TOTh->Fill(TOT);
+        aMaxh->Fill(aMax);
+        Qh->Fill(Q);
+        std::cout<<"t0 = "<<t0<<", TOT = "<<TOT<<", aMax = "<<aMax<<", Q = "<<Q<<std::endl;
+
+        aMaxQh->Fill(aMax, Q);
+        Qt0h->Fill(Q, t0);
+    }
+
+    TFile *outfile = new TFile("outfile.root", "RECREATE");
+    TCanvas *c1 = new TCanvas();
+    c1->Divide(2, 2);
+
+    c1->cd(1);
+    gStyle->SetOptStat(1);
+    t0h->SetTitle("t0; t0 (ps); counts (a.u.)");
+    t0h->Draw();
+    t0h->Write();
+
+    c1->cd(2);
+    gStyle->SetOptStat(1);
+    TOTh->SetTitle("TOT; TOT (ps); counts (a.u.)");
+    TOTh->Draw();
+    TOTh->Write();
+
+    c1->cd(3);
+    gStyle->SetOptStat(1);
+    Qh->SetTitle("Q; Q (C); counts (a.u.)");
+    Qh->Draw();
+    Qh->Write();
+
+    c1->cd(4);
+    gStyle->SetOptStat(1);
+    aMaxh->SetTitle("aMax; aMax (V); counts (a.u.)");
+    aMaxh->Draw();
+    aMaxh->Write();
+
+    c1->Write();
+
+
+    TCanvas *c2 = new TCanvas();
+    c2->Divide(2, 1);
+
+    c2->cd(1);
+    gStyle->SetOptStat(1);
+    aMaxQh->SetTitle("aMax vs. Q; aMax (V); Q (C)");
+    aMaxQh->Draw();
+    aMaxQh->Write();
+
+    c2->cd(2);
+    gStyle->SetOptStat(1);
+    Qt0h->SetTitle("Q vs. t0; Q (C); t0 (ps)");
+    Qt0h->Draw();
+    Qt0h->Write();
+
+    c2->Write();
+
+    infile->Close();
+    outfile->Close();
 
     return kTRUE;
 }
