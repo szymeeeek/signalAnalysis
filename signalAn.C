@@ -63,7 +63,7 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
         }
         signHisto->SetBins(nSamples, times.at(0), times.at(times.size()-1));
 
-
+        //////////////////////////////////////////////////////////////////////////////////////
         /*Calculating the parameters from the signals*/
         
         //1. amplitude
@@ -114,6 +114,7 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
         Int_t binT1 = signHisto->FindBin(t1);
 
         Q = signHisto->Integral(binT0, binT1);
+        //////////////////////////////////////////////////////////////////////////////////////
 
         ms->set(t0, TOT, aMax, Q);
         signTree->Fill();
@@ -128,6 +129,7 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
 }
 
 Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
+    //opening a file containing the tree and reading it
     std::string filename = Form("%ssignalSaved.root", rootFile.c_str());
     TFile *infile = new TFile(filename.c_str(), "READ");
     if(!infile){
@@ -150,6 +152,7 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
     tree->SetBranchAddress("aMax", &aMax);
     tree->SetBranchAddress("Q", &Q);
 
+    //creating histos
     TH1D *Qh = new TH1D("Qh", "Q", 100, 80, 100);
     TH1D *aMaxh = new TH1D("aMaxh", "aMax", 100, 0, 2);
     TH1L *TOTh = new TH1L("TOTh", "TOT", 100, 8e4, 11e4);
@@ -157,6 +160,7 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
     TH2D *aMaxQh = new TH2D("aMaxQh", "aMax vs. Q", 100, 0, 2, 100, 80, 100);
     TH2D *Qt0h = new TH2D("Qt0h", "Q vs. t0", 100, 80, 100, 100, 1e10, 1e12);
 
+    //filling the histos
     for(Int_t i = 0; i < nEntries; i++){
         tree->GetEntry(i);
 
@@ -164,12 +168,12 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
         TOTh->Fill(TOT);
         aMaxh->Fill(aMax);
         Qh->Fill(Q);
-        std::cout<<"t0 = "<<t0<<", TOT = "<<TOT<<", aMax = "<<aMax<<", Q = "<<Q<<std::endl;
 
         aMaxQh->Fill(aMax, Q);
         Qt0h->Fill(Q, t0);
     }
 
+    //drawing and saving the histos
     TFile *outfile = new TFile("outfile.root", "RECREATE");
     TCanvas *c1 = new TCanvas();
     c1->Divide(2, 2);
