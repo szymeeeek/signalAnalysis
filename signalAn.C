@@ -129,6 +129,8 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
 }
 
 Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
+    gStyle->SetOptStat(0);
+    
     //opening a file containing the tree and reading it
     std::string filename = Form("%s_%ssignalSaved.root", rootFile.c_str(), no.c_str());
     TFile *infile = new TFile(filename.c_str(), "READ");
@@ -161,10 +163,10 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
     
     //creating histos
     TH1D *Qh = new TH1D("Qh", "Q", 100, Qlow, Qup); //
-    TH1D *aMaxh = new TH1D("aMaxh", "aMax", 100, aMaxLow, aMaxUp);
-    TH1I *TOTh = new TH1I("TOTh", "TOT", 100, TOTlow, TOTup);
+    TH1D *aMaxh = new TH1D("aMaxh", "aMax", 20, aMaxLow, aMaxUp);
+    TH1I *TOTh = new TH1I("TOTh", "TOT", 20, TOTlow, TOTup);
     TH1I *t0h = new TH1I("t0h", "t0", 100, t0low, t0up);
-    TH2D *aMaxQh = new TH2D("aMaxQh", "aMax vs. Q", 100, aMaxLow, aMaxUp, 100, Qlow, Qup);
+    TH2D *aMaxQh = new TH2D("aMaxQh", "aMax vs. Q", 50, aMaxLow, aMaxUp, 100, Qlow, Qup);
     TH2D *Qt0h = new TH2D("Qt0h", "Q vs. t0", 100, Qlow, Qup, 100, t0low, t0up);
 
     //filling the histos
@@ -180,9 +182,25 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
         Qt0h->Fill(Q, t0);
     }
 
+    //fitting
+    TF1 *aGaus = new TF1("aGaus", "gaus", aMaxLow, aMaxUp);
+    TF1 *QGaus = new TF1("QGaus", "gaus", Qlow, Qup);
+
+    TFitResultPtr aRes = aMaxh->Fit(aGaus, "S");
+    TFitResultPtr QRes = Qh->Fit(QGaus, "S");
+
     //drawing and saving the histos
     std::string outFilename = Form("%s_scope_%s_HISTOS.root", rootFile.c_str(), no.c_str());
     TFile *outfile = new TFile(outFilename.c_str(), "RECREATE");
+
+    std::string aParStr = Form("mean = %f +/- %f", aGaus->GetParameter(1), aGaus->GetParError(1));
+    TText *aMaxPars = new TText();
+    std::cout<<"aPars "<<aParStr<<std::endl;
+
+    std::string QParStr = Form("mean = %f +/- %f", QGaus->GetParameter(1), QGaus->GetParError(1));
+    TText *QPars = new TText();
+    std::cout<<"QPars "<<QParStr<<std::endl;
+
     TCanvas *c1 = new TCanvas();
     c1->Divide(2, 2);
 
@@ -202,12 +220,14 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
     gStyle->SetOptStat(1);
     Qh->SetTitle("Q; Q (C); counts (a.u.)");
     Qh->Draw();
+    QPars->DrawTextNDC(.5, .8, QParStr.c_str());
     Qh->Write();
 
     c1->cd(4);
     gStyle->SetOptStat(1);
     aMaxh->SetTitle("aMax; aMax (V); counts (a.u.)");
     aMaxh->Draw();
+    aMaxPars->DrawTextNDC(0.5, 0.8, aParStr.c_str());
     aMaxh->Write();
 
     c1->Write();
