@@ -195,11 +195,11 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
 
     std::string aParStr = Form("mean = %f +/- %f", aGaus->GetParameter(1), aGaus->GetParError(1));
     TText *aMaxPars = new TText();
-    std::cout<<"aPars "<<aParStr<<std::endl;
+    //std::cout<<"aPars "<<aParStr<<std::endl;
 
     std::string QParStr = Form("mean = %f +/- %f", QGaus->GetParameter(1), QGaus->GetParError(1));
     TText *QPars = new TText();
-    std::cout<<"QPars "<<QParStr<<std::endl;
+    //std::cout<<"QPars "<<QParStr<<std::endl;
 
     TCanvas *c1 = new TCanvas();
     c1->Divide(2, 2);
