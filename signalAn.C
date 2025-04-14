@@ -252,3 +252,17 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
 
     return kTRUE;
 }
+
+void saveMulti(){
+    for(int i = 1; i<16; i++){
+        std::string no = ""+std::to_string(i);
+        saveSignal("250410", no);
+    }
+}
+
+void drawMulti(){
+    for(int i = 1; i<16; i++){
+        std::string no = ""+std::to_string(i);
+        histosMaking("250410", no);
+    }
+}
