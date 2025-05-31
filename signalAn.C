@@ -2,15 +2,29 @@
 #include <fstream>
 #include <string>
 
+//come up with a filenaming method
+//get filenames using the firectory function from (...)
+//sort them alphabetically
+//specify the number of files for one position
+
+std::fstream* mergeCsv(/*pointer to a vector of filenames, number of files for one pos, */){
+    std::fstream merged;
+    merged.open(, ios::out);
+
+    for()
+
+    return *merged;
+}
+
 /*The first two arguments are for specifying the filename, its format should be "[fileID]_scope_[no].csv".*/
 
 Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
     Bool_t debug = kFALSE;
     gSystem->Load("mySignal_cxx.so");
     std::cout.precision(12);
-
-    std::string filename = Form("%s_scope_%s.csv", fileID.c_str(), no.c_str());
-    std::ifstream data;
+    
+    std::string filename = Form("%sscope_%s.csv", fileID.c_str(), no.c_str());
+    std::fstream data;
     data.open(filename, ios::in);
 
     if(!data){
@@ -18,17 +32,17 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
         return kFALSE;
     }
 
-    TFile *signal = new TFile(Form("%s_%ssignalSaved.root", fileID.c_str(), no.c_str()), "UPDATE");
+    TFile *signal = new TFile(Form("%s%ssignalSaved.root", fileID.c_str(), no.c_str()), "UPDATE");
     TTree *signTree = new TTree("signTree", "signTree");
 
     mySignal *ms = new mySignal();
-    std::string branchName = Form("%s_%s", fileID.c_str(), no.c_str());
+    std::string branchName = Form("signal_%s", no.c_str());
     signTree->Branch(branchName.c_str(), &ms);
 
     Double_t aMax, aThr, Q;
     Long_t t0, t1, TOT;
     Int_t t0i, t1i;
-    Int_t baselineCount = 100;
+    Int_t baselineCount = 200;
 
     double time, voltage;
     int j = 0;
@@ -41,8 +55,12 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
     std::string line;
 
     getline(data, line);
+    std::cout<<line<<std::endl;
     getline(data, line);
+    std::cout<<line<<std::endl;
     getline(data, line);
+    std::cout<<line<<std::endl;
+    
 
     while(data){
         TH1D *signHisto = new TH1D(Form("histo%i", j), Form("histo%i", j), nSamples, 0, nSamples);
@@ -82,8 +100,8 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
         }
         variance /= baseline.size();
         Double_t stddev = std::sqrt(variance);
-        aThr = 5*stddev;
-        if(debug == true){std::cout<<aThr<<std::endl;}
+        aThr = 3*stddev;
+        if(debug){std::cout<<"aThr = "<<aThr<<std::endl;}
 
         //3. t0&TOT
         Int_t l = 1;
@@ -116,9 +134,15 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
         Q = signHisto->Integral(binT0, binT1);
         //////////////////////////////////////////////////////////////////////////////////////
 
+        // TLine *bsln = new TLine(times.front(), mean, times.back(), mean);
+        // bsln->SetLineColor(kRed);
+        // bsln->SetLineStyle(2);
+        // bsln->SetLineWidth(aTHr);
+        // bsln->Draw("same");
+
         ms->set(t0, TOT, aMax, Q);
         signTree->Fill();
-        if(debug == true){signHisto->Write();}
+        if(debug){signHisto->Write(); std::cout<<Q<<std::endl;}
         delete signHisto;
         j++;
     }
@@ -132,14 +156,14 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
     gStyle->SetOptStat(0);
     
     //opening a file containing the tree and reading it
-    std::string filename = Form("%s_%ssignalSaved.root", rootFile.c_str(), no.c_str());
+    std::string filename = Form("%s%ssignalSaved.root", rootFile.c_str(), no.c_str());
     TFile *infile = new TFile(filename.c_str(), "READ");
     if(!infile){
         std::cout<<"Something's wrong! File couldn't be opened!"<<std::endl;
         return kFALSE;
     }
 
-    std::string branchName = Form("%s_%s", rootFile.c_str(), no.c_str());
+    std::string branchName = Form("signal_%s", no.c_str());
     TTree *tree = (TTree*)infile->Get("signTree");
     if (!tree) {
         std::cout << "Tree not found!" << std::endl;
@@ -184,10 +208,10 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
 
     //fitting
     TF1 *aGaus = new TF1("aGaus", "gaus", aMaxLow, aMaxUp);
-    TF1 *QGaus = new TF1("QGaus", "gaus", Qlow, Qup);
+    TF1 *QGaus = new TF1("QGaus", "gaus", 8, Qup);
 
     TFitResultPtr aRes = aMaxh->Fit(aGaus, "S");
-    TFitResultPtr QRes = Qh->Fit(QGaus, "S");
+    TFitResultPtr QRes = Qh->Fit(QGaus, "S V", "", 10, Qup);
 
     //drawing and saving the histos
     std::string outFilename = Form("%s_scope_%s_HISTOS.root", rootFile.c_str(), no.c_str());
@@ -254,15 +278,13 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
 }
 
 void saveMulti(){
-    for(int i = 1; i<16; i++){
-        std::string no = ""+std::to_string(i);
-        saveSignal("250410", no);
+    for(int i = 20; i<31; i++){
+        saveSignal("/home/szymon/LHCb/20250524testsRep/BCF20XL1/Scope/", std::to_string(i));
     }
 }
 
 void drawMulti(){
-    for(int i = 1; i<16; i++){
-        std::string no = ""+std::to_string(i);
-        histosMaking("250410", no);
+    for(int i = 20; i<31; i++){
+        histosMaking("/home/szymon/LHCb/20250524testsRep/BCF20XL1/Scope/", std::to_string(i));
     }
 }
