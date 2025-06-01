@@ -28,7 +28,7 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
     data.open(filename, ios::in);
 
     if(!data){
-        std::cout<<"File coudn't be opened!"<<std::endl;
+        std::cout<<"File couldn't be opened!"<<std::endl;
         return kFALSE;
     }
 
