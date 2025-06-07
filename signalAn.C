@@ -1,19 +1,82 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <vector>
+#include <algorithm>
 
 //come up with a filenaming method
 //get filenames using the firectory function from (...)
 //sort them alphabetically
 //specify the number of files for one position
 
-std::fstream* mergeCsv(/*pointer to a vector of filenames, number of files for one pos, */){
-    std::fstream merged;
-    merged.open(, ios::out);
+std::vector<std::pair<std::string, int>> dir_lister(std::string path_str) {
+    std::vector<std::pair<std::string, int>> files;
+    std::filesystem::path path(path_str);
 
-    for()
+    if (!std::filesystem::exists(path)) {
+        std::cerr << "Path does not exist." << std::endl;
+        return files;
+    }
+    if (!std::filesystem::is_directory(path)) {
+        std::cerr << "Path is not a directory." << std::endl;
+        return files;
+    }
+    for (const auto& entry : std::filesystem::directory_iterator(path)) {
+        if (std::filesystem::is_regular_file(entry.symlink_status())) {
+            std::string file_name = entry.path().filename().string();
+            int file_size = static_cast<int>(entry.file_size());
+            files.emplace_back(file_name, file_size);
+            // std::cout << "File: " << file_name << ", Size: " << file_size << " bytes" << std::endl;
+        }
+    }
+    
+    std::sort(files.begin(), files.end());
 
-    return *merged;
+    // std::cout << "Files in directory: " << path_str << std::endl;
+    // for(const auto& [name, size] : files){
+    //     std::cout << "File: " << name << ", Size: " << size << " bytes" << std::endl;
+    // }
+    // std::cout << "Total files found: " << files.size() << std::endl;
+    return files;
+}
+
+void mergeCsv(std::string directory, Int_t filesPerStep = 2){
+    std::vector<std::pair<std::string, int>> files = dir_lister(directory);
+
+    if (files.size() < filesPerStep) {
+        std::cerr << "Not enough files to merge." << std::endl;
+        return;
+    }
+
+    for (size_t i = 0; i < files.size(); i += filesPerStep) {
+        std::cout << "Appending: " << files[i].first << " with ";
+        std::fstream firstFile(directory + "/" + files[i].first, std::ios::in | std::ios::out | std::ios::app);
+        if (!firstFile) {
+            std::cerr << "\nFailed to open file: " << files[i].first << std::endl;
+            continue;
+        }
+
+        for (size_t j = 1; j < filesPerStep && i + j < files.size(); ++j) {
+            std::fstream secondFile(directory + "/" + files[i + j].first, std::ios::in);
+            if (!secondFile) {
+                std::cerr << "\nFailed to open file: " << files[i + j].first << std::endl;
+                continue;
+            }
+            std::cout << files[i + j].first << "\n";
+            // Skip header of the second file
+            std::string line;
+            std::getline(secondFile, line);
+            std::getline(secondFile, line);
+            std::getline(secondFile, line);
+
+            while (std::getline(secondFile, line)) {
+                firstFile << line << "\n";
+            }
+            secondFile.close();
+        }
+        firstFile.close();
+    }
+    std::cout << "Merging completed." << std::endl;
 }
 
 /*The first two arguments are for specifying the filename, its format should be "[fileID]_scope_[no].csv".*/
@@ -42,7 +105,7 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
     Double_t aMax, aThr, Q;
     Long_t t0, t1, TOT;
     Int_t t0i, t1i;
-    Int_t baselineCount = 200;
+    Int_t baselineCount = 100;
 
     double time, voltage;
     int j = 0;
@@ -100,7 +163,7 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
         }
         variance /= baseline.size();
         Double_t stddev = std::sqrt(variance);
-        aThr = 3*stddev;
+        aThr = 5*stddev;
         if(debug){std::cout<<"aThr = "<<aThr<<std::endl;}
 
         //3. t0&TOT
@@ -186,16 +249,18 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
     Qup = 1.1*Q; aMaxUp = 1.1*aMax; TOTup = 1.1*TOT; t0up = 1.1*t0;
     
     //creating histos
-    TH1D *Qh = new TH1D("Qh", "Q", 100, Qlow, Qup); //
+    TH1D *Qh = new TH1D("Qh", "Q", 50, Qlow, Qup); //
     TH1D *aMaxh = new TH1D("aMaxh", "aMax", 20, aMaxLow, aMaxUp);
     TH1I *TOTh = new TH1I("TOTh", "TOT", 20, TOTlow, TOTup);
     TH1I *t0h = new TH1I("t0h", "t0", 100, t0low, t0up);
-    TH2D *aMaxQh = new TH2D("aMaxQh", "aMax vs. Q", 50, aMaxLow, aMaxUp, 100, Qlow, Qup);
-    TH2D *Qt0h = new TH2D("Qt0h", "Q vs. t0", 100, Qlow, Qup, 100, t0low, t0up);
+    TH2D *aMaxQh = new TH2D("aMaxQh", "aMax vs. Q", 50, aMaxLow, aMaxUp, 50, Qlow, Qup);
+    TH2D *Qt0h = new TH2D("Qt0h", "Q vs. t0", 50, Qlow, Qup, 100, t0low, t0up);
 
     //filling the histos
     for(Int_t i = 0; i < nEntries; i++){
         tree->GetEntry(i);
+
+        if(Q < 1e-10) continue;
 
         t0h->Fill(t0);
         TOTh->Fill(TOT);
@@ -278,13 +343,13 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
 }
 
 void saveMulti(){
-    for(int i = 20; i<31; i++){
-        saveSignal("/home/szymon/LHCb/20250524testsRep/BCF20XL1/Scope/", std::to_string(i));
+    for(int i = 22; i<41; i=i+2){
+        saveSignal("/scratch3/lhcb/data/20250601testsWithScopeRep/BCF20XL1/20250604", std::to_string(i));
     }
 }
 
 void drawMulti(){
-    for(int i = 20; i<31; i++){
-        histosMaking("/home/szymon/LHCb/20250524testsRep/BCF20XL1/Scope/", std::to_string(i));
+    for(int i = 22; i<41; i=i+2){
+        histosMaking("/scratch3/lhcb/data/20250601testsWithScopeRep/BCF20XL1/20250604", std::to_string(i));
     }
 }
