@@ -79,10 +79,10 @@ void mergeCsv(std::string directory, Int_t filesPerStep = 2){
     std::cout << "Merging completed." << std::endl;
 }
 
-/*The first two arguments are for specifying the filename, its format should be "[fileID]_scope_[no].csv".*/
+/*The first two arguments are for specifying the filename, its format should be "[directory/fileID]scope_[no].csv".*/
 
-Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
-    Bool_t debug = kFALSE;
+Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21", Int_t stdCount = 3){
+    Bool_t debug = kTRUE;
     gSystem->Load("mySignal_cxx.so");
     std::cout.precision(12);
     
@@ -95,17 +95,16 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
         return kFALSE;
     }
 
-    TFile *signal = new TFile(Form("%s%ssignalSaved.root", fileID.c_str(), no.c_str()), "UPDATE");
+    TFile *signal = new TFile(Form("%s%ssignalSaved.root", fileID.c_str(), no.c_str()), "RECREATE");
     TTree *signTree = new TTree("signTree", "signTree");
 
     mySignal *ms = new mySignal();
     std::string branchName = Form("signal_%s", no.c_str());
     signTree->Branch(branchName.c_str(), &ms);
 
-    Double_t aMax, aThr, Q;
-    Long_t t0, t1, TOT;
+    Double_t aMax, aThr, Q, t0, t1, TOT;
     Int_t t0i, t1i;
-    Int_t baselineCount = 100;
+    Int_t baselineCount = 80;
 
     double time, voltage;
     int j = 0;
@@ -163,15 +162,15 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
         }
         variance /= baseline.size();
         Double_t stddev = std::sqrt(variance);
-        aThr = 5*stddev;
+        aThr = mean + stdCount*stddev;
         if(debug){std::cout<<"aThr = "<<aThr<<std::endl;}
 
         //3. t0&TOT
         Int_t l = 1;
         for(Int_t i = 1; i<=nSamples; i++){
             Double_t vAtI = signHisto->GetBinContent(i);
-            if(vAtI>aThr){
-                if(debug == true){cout<<i<<endl;}
+            if(vAtI>(aThr)){
+                if(debug){cout<<i<<endl;}
                 t0 = times.at(i-1);
                 break;
             }
@@ -181,7 +180,7 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
             Double_t vAtI = signHisto->GetBinContent(k);
             if(vAtI<aThr){
                 t1 = times.at(k-1);
-                if(debug == true){cout<<k<<endl;}
+                if(debug){cout<<k<<endl;}
                 break;
             }
         }
@@ -195,6 +194,7 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
         Int_t binT1 = signHisto->FindBin(t1);
 
         Q = signHisto->Integral(binT0, binT1);
+        //if(Q < 1e-10){std::cout<<"Q = "<<Q<<"; iteration no. "<<j<<std::endl;}
         //////////////////////////////////////////////////////////////////////////////////////
 
         // TLine *bsln = new TLine(times.front(), mean, times.back(), mean);
@@ -251,8 +251,8 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
     //creating histos
     TH1D *Qh = new TH1D("Qh", "Q", 50, Qlow, Qup); //
     TH1D *aMaxh = new TH1D("aMaxh", "aMax", 20, aMaxLow, aMaxUp);
-    TH1I *TOTh = new TH1I("TOTh", "TOT", 20, TOTlow, TOTup);
-    TH1I *t0h = new TH1I("t0h", "t0", 100, t0low, t0up);
+    TH1D *TOTh = new TH1I("TOTh", "TOT", 20, TOTlow, TOTup);
+    TH1D *t0h = new TH1I("t0h", "t0", 100, t0low, t0up);
     TH2D *aMaxQh = new TH2D("aMaxQh", "aMax vs. Q", 50, aMaxLow, aMaxUp, 50, Qlow, Qup);
     TH2D *Qt0h = new TH2D("Qt0h", "Q vs. t0", 50, Qlow, Qup, 100, t0low, t0up);
 
@@ -296,18 +296,21 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
     c1->cd(1);
     gStyle->SetOptStat(1);
     t0h->SetTitle("t0; t0 (ps); counts (a.u.)");
+    t0h->Sumw2();
     t0h->Draw();
     t0h->Write();
 
     c1->cd(2);
     gStyle->SetOptStat(1);
     TOTh->SetTitle("TOT; TOT (ps); counts (a.u.)");
+    TOTh->Sumw2();
     TOTh->Draw();
     TOTh->Write();
 
     c1->cd(3);
     gStyle->SetOptStat(1);
     Qh->SetTitle("Q; Q (C); counts (a.u.)");
+    Qh->Sumw2();
     Qh->Draw();
     QPars->DrawTextNDC(.5, .8, QParStr.c_str());
     Qh->Write();
@@ -315,6 +318,7 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
     c1->cd(4);
     gStyle->SetOptStat(1);
     aMaxh->SetTitle("aMax; aMax (V); counts (a.u.)");
+    aMaxh->Sumw2();
     aMaxh->Draw();
     aMaxPars->DrawTextNDC(0.5, 0.8, aParStr.c_str());
     aMaxh->Write();
@@ -342,14 +346,14 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
     return kTRUE;
 }
 
-void saveMulti(){
+void saveMulti(Int_t stdCount = 3){
     for(int i = 22; i<41; i=i+2){
-        saveSignal("/scratch3/lhcb/data/20250601testsWithScopeRep/BCF20XL1/20250604", std::to_string(i));
+        saveSignal("/scratch3/lhcb/data/20250601testsWithScopeRep/BCF12XL/20250602", std::to_string(i), stdCount);
     }
 }
 
 void drawMulti(){
     for(int i = 22; i<41; i=i+2){
-        histosMaking("/scratch3/lhcb/data/20250601testsWithScopeRep/BCF20XL1/20250604", std::to_string(i));
+        histosMaking("/scratch3/lhcb/data/20250601testsWithScopeRep/BCF12XL/20250602", std::to_string(i));
     }
 }
