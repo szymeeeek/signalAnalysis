@@ -82,7 +82,7 @@ void mergeCsv(std::string directory, Int_t filesPerStep = 2){
 /*The first two arguments are for specifying the filename, its format should be "[directory/fileID]scope_[no].csv".*/
 
 Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21", Int_t stdCount = 3){
-    Bool_t debug = kTRUE;
+    Bool_t debug = kFALSE;
     gSystem->Load("mySignal_cxx.so");
     std::cout.precision(12);
     
@@ -123,6 +123,7 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21", Int_t 
     getline(data, line);
     std::cout<<line<<std::endl;
     
+    Int_t zeroChargeN = 0;
 
     while(data){
         TH1D *signHisto = new TH1D(Form("histo%i", j), Form("histo%i", j), nSamples, 0, nSamples);
@@ -176,7 +177,8 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21", Int_t 
             }
             l++;
         }
-        for(Int_t k = l+10; k<=nSamples; k++){
+        Int_t k = l+10;
+        for( ; k<=nSamples; k++){
             Double_t vAtI = signHisto->GetBinContent(k);
             if(vAtI<aThr){
                 t1 = times.at(k-1);
@@ -206,10 +208,11 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21", Int_t 
         ms->set(t0, TOT, aMax, Q);
         if(debug){signHisto->Write(); std::cout<<Q<<std::endl;}
 
-        if(TMath::Abs(Q)<1e-10){
+        if(TMath::Abs(Q)<.3){
             signHisto->Write();
-            std::cout<<"Q < 1e-10!!: "<<Q<<", iter no. "<<j<<std::endl;
-            std:cout<<"aThr = "<<aThr<<", t0 = "<<t0<<", t1 = "<<t1<<std::endl;
+            std::cout<<"Q < .3!!: "<<Q<<", iter no. "<<j<<std::endl;
+            std:cout<<"aThr = "<<aThr<<", t0 = "<<t0<<", bin no. "<<l<<", t1 = "<<t1<<", bin no. "<<k<<std::endl;
+            zeroChargeN++;
             continue;
         }
 
@@ -217,6 +220,8 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21", Int_t 
         delete signHisto;
         j++;
     }
+    std::cout<<"\n\n---------------------------------------"<<std::endl;
+    std::cout<<"Number of histos with charge under .3 C: "<<zeroChargeN<<std::endl;
     signTree->Write();
     signal->Close();
 
@@ -259,8 +264,8 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
     //creating histos
     TH1D *Qh = new TH1D("Qh", "Q", 50, Qlow, Qup); //
     TH1D *aMaxh = new TH1D("aMaxh", "aMax", 20, aMaxLow, aMaxUp);
-    TH1D *TOTh = new TH1I("TOTh", "TOT", 20, TOTlow, TOTup);
-    TH1D *t0h = new TH1I("t0h", "t0", 100, t0low, t0up);
+    TH1D *TOTh = new TH1D("TOTh", "TOT", 20, TOTlow, TOTup);
+    TH1D *t0h = new TH1D("t0h", "t0", 100, t0low, t0up);
     TH2D *aMaxQh = new TH2D("aMaxQh", "aMax vs. Q", 50, aMaxLow, aMaxUp, 50, Qlow, Qup);
     TH2D *Qt0h = new TH2D("Qt0h", "Q vs. t0", 50, Qlow, Qup, 100, t0low, t0up);
 
