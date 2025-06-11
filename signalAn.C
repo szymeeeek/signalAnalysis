@@ -204,8 +204,16 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21", Int_t 
         // bsln->Draw("same");
 
         ms->set(t0, TOT, aMax, Q);
-        signTree->Fill();
         if(debug){signHisto->Write(); std::cout<<Q<<std::endl;}
+
+        if(TMath::Abs(Q)<1e-10){
+            signHisto->Write();
+            std::cout<<"Q < 1e-10!!: "<<Q<<", iter no. "<<j<<std::endl;
+            std:cout<<"aThr = "<<aThr<<", t0 = "<<t0<<", t1 = "<<t1<<std::endl;
+            continue;
+        }
+
+        signTree->Fill();
         delete signHisto;
         j++;
     }
