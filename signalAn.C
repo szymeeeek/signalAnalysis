@@ -208,7 +208,7 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21", Int_t 
         ms->set(t0, TOT, aMax, Q);
         if(debug){signHisto->Write(); std::cout<<Q<<std::endl;}
 
-        if(TMath::Abs(Q)<.3){
+        if(TMath::Abs(Q)<1){
             signHisto->Write();
             std::cout<<"Q < .3!!: "<<Q<<", iter no. "<<j<<std::endl;
             std:cout<<"aThr = "<<aThr<<", t0 = "<<t0<<", bin no. "<<l<<", t1 = "<<t1<<", bin no. "<<k<<std::endl;
@@ -286,10 +286,10 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
 
     //fitting
     TF1 *aGaus = new TF1("aGaus", "gaus", aMaxLow, aMaxUp);
-    TF1 *QGaus = new TF1("QGaus", "gaus", 8, Qup);
+    TF1 *QGaus = new TF1("QGaus", "gaus", Qlow, Qup);
 
     TFitResultPtr aRes = aMaxh->Fit(aGaus, "S");
-    TFitResultPtr QRes = Qh->Fit(QGaus, "S V", "", 10, Qup);
+    TFitResultPtr QRes = Qh->Fit(QGaus, "S V", "", Qlow, Qup);
 
     //drawing and saving the histos
     std::string outFilename = Form("%s_scope_%s_HISTOS.root", rootFile.c_str(), no.c_str());
@@ -359,14 +359,14 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
     return kTRUE;
 }
 
-void saveMulti(Int_t stdCount = 3){
-    for(int i = 22; i<41; i=i+2){
-        saveSignal("/scratch3/lhcb/data/20250601testsWithScopeRep/BCF12XL/20250602", std::to_string(i), stdCount);
+void saveMulti(Int_t stdCount = 5){
+    for(int i = 22; i<34; i=i+1){
+        saveSignal("/scratch3/lhcb/data/20250611luxiumRepeatedMorePoints/BCF20XL2/20250611", std::to_string(i), stdCount);
     }
 }
 
 void drawMulti(){
-    for(int i = 22; i<41; i=i+2){
-        histosMaking("/scratch3/lhcb/data/20250601testsWithScopeRep/BCF12XL/20250602", std::to_string(i));
+    for(int i = 22; i<34; i=i+1){
+        histosMaking("/scratch3/lhcb/data/20250611luxiumRepeatedMorePoints/BCF20XL2/20250611", std::to_string(i));
     }
 }
