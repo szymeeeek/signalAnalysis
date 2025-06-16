@@ -81,7 +81,7 @@ void mergeCsv(std::string directory, Int_t filesPerStep = 2){
 
 /*The first two arguments are for specifying the filename, its format should be "[directory/fileID]scope_[no].csv".*/
 
-Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21", Int_t stdCount = 3){
+Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
     Bool_t debug = kFALSE;
     gSystem->Load("mySignal_cxx.so");
     std::cout.precision(12);
@@ -163,7 +163,7 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21", Int_t 
         }
         variance /= baseline.size();
         Double_t stddev = std::sqrt(variance);
-        aThr = mean + stdCount*stddev;
+        aThr = .1 * aMax;
         if(debug){std::cout<<"aThr = "<<aThr<<std::endl;}
 
         //3. t0&TOT
