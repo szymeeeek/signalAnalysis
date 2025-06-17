@@ -9,6 +9,8 @@
 //sort them alphabetically
 //specify the number of files for one position
 
+//add the dynamic version of calculating the charge and TOT
+
 std::vector<std::pair<std::string, int>> dir_lister(std::string path_str) {
     std::vector<std::pair<std::string, int>> files;
     std::filesystem::path path(path_str);
@@ -82,7 +84,7 @@ void mergeCsv(std::string directory, Int_t filesPerStep = 2){
 /*The first two arguments are for specifying the filename, its format should be "[directory/fileID]scope_[no].csv".*/
 
 Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
-    Bool_t debug = kFALSE;
+    Bool_t debug = kTRUE;
     gSystem->Load("mySignal_cxx.so");
     std::cout.precision(12);
     
@@ -102,12 +104,24 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
     std::string branchName = Form("signal_%s", no.c_str());
     signTree->Branch(branchName.c_str(), &ms);
 
-    Double_t aMax, aThr, Q, t0, t1, TOT;
-    Int_t t0i, t1i;
+    Double_t aMax, aThr, Q, t0, t1, t2, TOT; 
+
+    //-------------------------------------------------------------------
+    //t0 is the start time of the signal, common for Q and TOT calculation, 
+    //t1 is the upper boundary for Q calculation (constant time window),
+    //t2 is the upper boundary for TOT calculated dynamically
+    //-------------------------------------------------------------------
+
     Int_t baselineCount = 80;
+
+    //------------------------------------------------------------------------------
+    //baselineCount is the number of bins used to calculate the mean baseline value
+    //------------------------------------------------------------------------------
 
     double time, voltage;
     int j = 0;
+
+    Double_t timeWindow = 275; //in terms of bins
 
     Int_t nSamples;
     std::string dummy;
@@ -144,29 +158,36 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
         }
         signHisto->SetBins(nSamples, times.at(0), times.at(times.size()-1));
 
-        //////////////////////////////////////////////////////////////////////////////////////
-        /*Calculating the parameters from the signals*/
+    //------------------------------------------------------------------------------
+
+    /*Calculating the parameters from the signals*/
         
-        //1. amplitude
+    //1. amplitude
         aMax = signHisto->GetMaximum();
 
-        //2. amplitude threshold
+    //2. amplitude threshold (bsln & variance not used atm)
+        
+        //-------baseline
         Double_t sum = 0;
         for (Double_t v : baseline) {
             sum += v;
         }
         Double_t mean = sum / baseline.size();
         
+        //-------variance & standrad deviation
         Double_t variance = 0;
         for (Double_t v : baseline) {
             variance += (v - mean) * (v - mean);
         }
         variance /= baseline.size();
         Double_t stddev = std::sqrt(variance);
-        aThr = .1 * aMax;
+
+        //-------amplitude threshold - constant for the entire run.
+        aThr = 0.002;
         if(debug){std::cout<<"aThr = "<<aThr<<std::endl;}
 
-        //3. t0&TOT
+    //3. t0&TOT
+        //-------t0
         Int_t l = 1;
         for(Int_t i = 1; i<=nSamples; i++){
             Double_t vAtI = signHisto->GetBinContent(i);
@@ -177,21 +198,37 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
             }
             l++;
         }
+
+        std::cout<<"\n\n l = "<<l<<", thus l+275 = "<<l+275<<"\n\n"<<"iter no. "<<j<<"\n\n"<<std::endl;
+
+        //---------t1
+        try{
+            t1 = times.at(l+timeWindow);
+        }
+        catch(const std::out_of_range& e){
+            std::cout<<"exception caught: "<<e.what()<<std::endl;
+            continue;
+        }
+        
+        //tutaj przekroczenie dla tot zrobic
         Int_t k = l+10;
         for( ; k<=nSamples; k++){
             Double_t vAtI = signHisto->GetBinContent(k);
             if(vAtI<aThr){
-                t1 = times.at(k-1);
+                t2 = times.at(k-1);
                 if(debug){cout<<k<<endl;}
                 break;
             }
         }
+        
+
         std::setprecision(10);
 
+        //-------TOT
         if(debug == true){cout<<t1<<" "<<t0<<endl;}
-        TOT = t1 - t0;
+        TOT = t2 - t0;
 
-        // 4. Charge
+    // 4. Charge
         Int_t binT0 = signHisto->FindBin(t0);
         Int_t binT1 = signHisto->FindBin(t1);
 
@@ -206,12 +243,12 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
         // bsln->Draw("same");
 
         ms->set(t0, TOT, aMax, Q);
-        if(debug){signHisto->Write(); std::cout<<Q<<std::endl;}
+        if(debug){signHisto->Write();}
 
         if(TMath::Abs(Q)<1){
             signHisto->Write();
-            std::cout<<"Q < .3!!: "<<Q<<", iter no. "<<j<<std::endl;
-            std:cout<<"aThr = "<<aThr<<", t0 = "<<t0<<", bin no. "<<l<<", t1 = "<<t1<<", bin no. "<<k<<std::endl;
+            std::cout<<"Q < 1!!: "<<Q<<", iter no. "<<j<<std::endl;
+            std:cout<<"aThr = "<<aThr<<", t0 = "<<t0<<", bin no. "<<l<<", t1 = "<<t1<<", bin no. "<<l+timeWindow<<std::endl;
             zeroChargeN++;
             continue;
         }
@@ -221,7 +258,7 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
         j++;
     }
     std::cout<<"\n\n---------------------------------------"<<std::endl;
-    std::cout<<"Number of histos with charge under .3 C: "<<zeroChargeN<<std::endl;
+    std::cout<<"Number of histos with charge under 1 C: "<<zeroChargeN<<std::endl;
     signTree->Write();
     signal->Close();
 
@@ -262,7 +299,7 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
     Qup = 1.1*Q; aMaxUp = 1.1*aMax; TOTup = 1.1*TOT; t0up = 1.1*t0;
     
     //creating histos
-    TH1D *Qh = new TH1D("Qh", "Q", 50, Qlow, Qup); //
+    TH1D *Qh = new TH1D("Qh", "Q", 25, Qlow, Qup); //
     TH1D *aMaxh = new TH1D("aMaxh", "aMax", 20, aMaxLow, aMaxUp);
     TH1D *TOTh = new TH1D("TOTh", "TOT", 20, TOTlow, TOTup);
     TH1D *t0h = new TH1D("t0h", "t0", 100, t0low, t0up);
@@ -359,14 +396,16 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
     return kTRUE;
 }
 
-void saveMulti(Int_t stdCount = 5){
-    for(int i = 22; i<34; i=i+1){
-        saveSignal("/scratch3/lhcb/data/20250611luxiumRepeatedMorePoints/BCF20XL2/20250611", std::to_string(i), stdCount);
+void saveMulti(){
+    for(int i = 22; i<40; i=i+2){
+        saveSignal("/scratch3/lhcb/data/20250601testsWithScopeRep/SCSF-78MJ/20250605", std::to_string(i));
     }
 }
 
+
+
 void drawMulti(){
-    for(int i = 22; i<34; i=i+1){
-        histosMaking("/scratch3/lhcb/data/20250611luxiumRepeatedMorePoints/BCF20XL2/20250611", std::to_string(i));
+    for(int i = 22; i<40; i=i+2){
+        histosMaking("/scratch3/lhcb/data/20250601testsWithScopeRep/SCSF-78MJ/20250605", std::to_string(i));
     }
 }
