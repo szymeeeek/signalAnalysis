@@ -107,15 +107,15 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
     Double_t aMax, aThr, Q, t0, t1, t2, TOT; 
 
     //-------------------------------------------------------------------
-    //t0 is the start time of the signal, common for Q and TOT calculation, 
-    //t1 is the upper boundary for Q calculation (constant time window),
-    //t2 is the upper boundary for TOT calculated dynamically
+    //  t0 is the start time of the signal, common for Q and TOT calculation, 
+    //  t1 is the upper boundary for Q calculation (constant time window),
+    //  t2 is the upper boundary for TOT calculated dynamically
     //-------------------------------------------------------------------
 
     Int_t baselineCount = 80;
 
     //------------------------------------------------------------------------------
-    //baselineCount is the number of bins used to calculate the mean baseline value
+    //  baselineCount is the number of bins used to calculate the mean baseline value
     //------------------------------------------------------------------------------
 
     double time, voltage;
@@ -141,6 +141,7 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
 
     while(data){
         TH1D *signHisto = new TH1D(Form("histo%i", j), Form("histo%i", j), nSamples, 0, nSamples);
+        signHisto->SetDirectory(nullptr);
         std::vector <Double_t> baseline = {};
         std::vector <Double_t> times;
 
@@ -183,7 +184,7 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
         Double_t stddev = std::sqrt(variance);
 
         //-------amplitude threshold - constant for the entire run.
-        aThr = 0.002;
+        aThr = 0.001;
         if(debug){std::cout<<"aThr = "<<aThr<<std::endl;}
 
     //3. t0&TOT
@@ -199,7 +200,7 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
             l++;
         }
 
-        std::cout<<"\n\n l = "<<l<<", thus l+275 = "<<l+275<<"\n\n"<<"iter no. "<<j<<"\n\n"<<std::endl;
+        //std::cout<<"\n\n l = "<<l<<", thus l+275 = "<<l+275<<"\n\n"<<"iter no. "<<j<<"\n\n"<<std::endl;
 
         //---------t1
         try{
@@ -221,7 +222,6 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
             }
         }
         
-
         std::setprecision(10);
 
         //-------TOT
@@ -236,20 +236,52 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
         //if(Q < 1e-10){std::cout<<"Q = "<<Q<<"; iteration no. "<<j<<std::endl;}
         //////////////////////////////////////////////////////////////////////////////////////
 
-        // TLine *bsln = new TLine(times.front(), mean, times.back(), mean);
-        // bsln->SetLineColor(kRed);
-        // bsln->SetLineStyle(2);
-        // bsln->SetLineWidth(aTHr);
-        // bsln->Draw("same");
+        if(j == 1){
+            TLine *bsln = new TLine(times.front(), aThr, times.back(), aThr);
+            bsln->SetLineColor(kRed);
+            bsln->SetLineStyle(2);
+            bsln->SetLineWidth(2);
+
+            TLine *startline = new TLine(t0, signHisto->GetMinimum(), t0, signHisto->GetMaximum());
+            startline->SetLineColor(kRed);
+            startline->SetLineStyle(2);
+            startline->SetLineWidth(2);
+
+            // Add TText to describe the lines
+            TText *bslnText = new TText(times.front(), aThr + 0.02 * (signHisto->GetMaximum() - signHisto->GetMinimum()), "Amplitude threshold");
+            bslnText->SetTextColor(kRed);
+            bslnText->SetTextSize(0.03);
+
+            TText *startlineText = new TText(t0 + 0.02 * (times.back() - times.front()), signHisto->GetMaximum(), "t0 (Start time)");
+            startlineText->SetTextColor(kRed);
+            startlineText->SetTextSize(0.03);
+
+            TCanvas *c1 = new TCanvas();
+            c1->cd();
+            signHisto->SetTitle("");
+            signHisto->SetXTitle("time (ps)");
+            signHisto->SetYTitle("voltage (V)");
+            signHisto->SetLineColor(kBlue);
+            signHisto->SetLineWidth(2);
+            signHisto->Draw();
+            bsln->Draw("same");
+            startline->Draw("same");
+            startlineText->Draw("same");
+            bslnText->Draw("same");
+
+            c1->Write();
+        }
 
         ms->set(t0, TOT, aMax, Q);
         if(debug){signHisto->Write();}
 
-        if(TMath::Abs(Q)<1){
+        if(TMath::Abs(Q)<0.2){
             signHisto->Write();
             std::cout<<"Q < 1!!: "<<Q<<", iter no. "<<j<<std::endl;
-            std:cout<<"aThr = "<<aThr<<", t0 = "<<t0<<", bin no. "<<l<<", t1 = "<<t1<<", bin no. "<<l+timeWindow<<std::endl;
+            std::cout<<"aThr = "<<aThr<<", t0 = "<<t0<<", bin no. "<<l<<", t1 = "<<t1<<", bin no. "<<l+timeWindow<<std::endl;
             zeroChargeN++;
+            j++;
+            delete signHisto;
             continue;
         }
 
@@ -294,9 +326,9 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
     //getting the ranges
     Double_t Qlow, Qup, aMaxLow, aMaxUp, TOTlow, TOTup, t0low, t0up;
     tree->GetEntry(0);
-    Qlow = 0.9*Q; aMaxLow = 0.9*aMax; TOTlow = 0.9*TOT; t0low = 0.9*t0;
+    Qlow = 0.9*tree->GetMinimum("Q"); aMaxLow = 0.9*tree->GetMinimum("aMax"); TOTlow = 0.9*tree->GetMinimum("TOT"); t0low = 0.9*tree->GetMinimum("t0");
     tree->GetEntry((tree->GetEntries())-1);
-    Qup = 1.1*Q; aMaxUp = 1.1*aMax; TOTup = 1.1*TOT; t0up = 1.1*t0;
+    Qup = 1.1*tree->GetMaximum("Q"); aMaxUp = 1.1*tree->GetMaximum("aMax"); TOTup = 1.1*tree->GetMaximum("TOT"); t0up = 1.1*tree->GetMaximum("t0");
     
     //creating histos
     TH1D *Qh = new TH1D("Qh", "Q", 25, Qlow, Qup); //
@@ -309,8 +341,6 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
     //filling the histos
     for(Int_t i = 0; i < nEntries; i++){
         tree->GetEntry(i);
-
-        if(Q < 1e-10) continue;
 
         t0h->Fill(t0);
         TOTh->Fill(TOT);
@@ -332,12 +362,17 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
     std::string outFilename = Form("%s_scope_%s_HISTOS.root", rootFile.c_str(), no.c_str());
     TFile *outfile = new TFile(outFilename.c_str(), "RECREATE");
 
-    std::string aParStr = Form("mean = %f +/- %f", aGaus->GetParameter(1), aGaus->GetParError(1));
-    TText *aMaxPars = new TText();
-    //std::cout<<"aPars "<<aParStr<<std::endl;
+    std::string aParStr = Form("#splitline{mean = (%.5f #pm %.5f) C}{#splitline{sigma = (%.5f #pm %.5f) C}{norm = (%.0f #pm %.0f) a.u.}}",
+                               aGaus->GetParameter(1), aGaus->GetParError(1),
+                               aGaus->GetParameter(2), aGaus->GetParError(2),
+                               aGaus->GetParameter(0), aGaus->GetParError(0));
+    TLatex *aMaxPars = new TLatex();
 
-    std::string QParStr = Form("mean = %f +/- %f", QGaus->GetParameter(1), QGaus->GetParError(1));
-    TText *QPars = new TText();
+    std::string QParStr = Form("#splitline{mean = (%.3f #pm %.3f) C}{#splitline{sigma = (%.4f #pm %.4f) C}{norm = (%.0f #pm %.0f) a.u.}}",
+                               QGaus->GetParameter(1), QGaus->GetParError(1),
+                               QGaus->GetParameter(2), QGaus->GetParError(2),
+                               QGaus->GetParameter(0), QGaus->GetParError(0));
+    TLatex *QPars = new TLatex();
     //std::cout<<"QPars "<<QParStr<<std::endl;
 
     TCanvas *c1 = new TCanvas();
@@ -346,7 +381,6 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
     c1->cd(1);
     gStyle->SetOptStat(1);
     t0h->SetTitle("t0; t0 (ps); counts (a.u.)");
-    t0h->Sumw2();
     t0h->Draw();
     t0h->Write();
 
@@ -362,7 +396,7 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
     Qh->SetTitle("Q; Q (C); counts (a.u.)");
     Qh->Sumw2();
     Qh->Draw();
-    QPars->DrawTextNDC(.5, .8, QParStr.c_str());
+    QPars->DrawLatexNDC(0.55, 0.8, QParStr.c_str()); // Use DrawLatexNDC for TLatex
     Qh->Write();
 
     c1->cd(4);
@@ -370,7 +404,7 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
     aMaxh->SetTitle("aMax; aMax (V); counts (a.u.)");
     aMaxh->Sumw2();
     aMaxh->Draw();
-    aMaxPars->DrawTextNDC(0.5, 0.8, aParStr.c_str());
+    aMaxPars->DrawLatexNDC(0.55, 0.8, aParStr.c_str()); // Use DrawLatexNDC for TLatex
     aMaxh->Write();
 
     c1->Write();
@@ -397,15 +431,13 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
 }
 
 void saveMulti(){
-    for(int i = 22; i<40; i=i+2){
-        saveSignal("/scratch3/lhcb/data/20250601testsWithScopeRep/SCSF-78MJ/20250605", std::to_string(i));
+    for(int i = 1; i<16; i=i+1){
+        saveSignal("/scratch3/lhcb/data/firstTestWithScopeApr25/250410_", std::to_string(i));
     }
 }
 
-
-
 void drawMulti(){
-    for(int i = 22; i<40; i=i+2){
-        histosMaking("/scratch3/lhcb/data/20250601testsWithScopeRep/SCSF-78MJ/20250605", std::to_string(i));
+    for(int i = 1; i<16; i=i+1){
+        histosMaking("/scratch3/lhcb/data/firstTestWithScopeApr25/250410_", std::to_string(i));
     }
 }
