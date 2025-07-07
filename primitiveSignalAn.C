@@ -7,7 +7,6 @@
 
 Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21") {
     Bool_t debug = kTRUE;
-    gSystem->Load("mySignal_cxx.so");
     std::cout.precision(12);
     
     std::string filename = Form("%sscope_%s.csv", fileID.c_str(), no.c_str());
@@ -43,7 +42,7 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21") {
     double time, voltage;
     int j = 0;
 
-    Double_t timeWindow = 275; //in terms of bins
+    Double_t timeWindow; //in terms of bins
 
     Int_t nSamples;
     std::string dummy;
@@ -58,6 +57,58 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21") {
     std::cout<<line<<std::endl;
     getline(data, line);
     std::cout<<line<<std::endl;
+
+    TH1D *signHisto = new TH1D(Form("histo%i", j), Form("histo%i", j), nSamples, 0, nSamples);
+    signHisto->SetDirectory(nullptr);
+    std::vector <Double_t> baseline = {};
+    std::vector <Double_t> times;   
+
+    Double_t BL;
+
+    for(Int_t i = 0; i<nSamples; i++){
+        std::getline(data, line, ',');
+        time = line.empty() ? 0 : stod(line)*1e12;
+        std::getline(data, line, '\n');
+        voltage = line.empty() ? 0 : stod(line);
+
+        signHisto->SetBinContent(i, voltage);
+        if(i<baselineCount){
+            baseline.push_back(voltage);
+        }
+        times.push_back(time);
+    }
+    signHisto->SetBins(nSamples, times.at(0), times.at(times.size()-1));
+
+    TCanvas *preview = new TCanvas();
+    preview->cd();
+    signHisto->SetTitle("Preview of First Signal");
+    signHisto->SetXTitle("time (ps)");
+    signHisto->SetYTitle("voltage (V)");
+    signHisto->SetLineColor(kBlue);
+    signHisto->Draw();
+    preview->Update();
+    preview->WaitPrimitive();
+
+    std::cout<<"baseline level: ";
+    std::cin>>BL;
+
+    std::cout<<"\namplitude threshold: ";
+    std::cin>>aThr;
+
+    std::cout<<"\ntime window: ";
+    std::cin>>timeWindow;
+
+    preview->Close();
+    delete preview;
+    delete signHisto;
+
+    std::cout<<"\n\n---------------------------------------"<<std::endl;
+    std::cout<<"Processing signals from file: "<<filename<<std::endl;
+    std::cout<<"Amplitude threshold: "<<aThr<<", time window: "<<timeWindow<<std::endl;
+    std::cout<<"Baseline level: "<<BL<<std::endl;
+    std::cout<<"----------------------------------------"<<std::endl;
+    std::cout<<"Press enter to continue..."<<std::endl;
+    std::cin>>dummy;
     
     Int_t zeroChargeN = 0;
 
@@ -71,7 +122,7 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21") {
             std::getline(data, line, ',');
             time = line.empty() ? 0 : stod(line)*1e12;
             std::getline(data, line, '\n');
-            voltage = line.empty() ? 0 : stod(line);
+            voltage = line.empty() ? 0 : stod(line)-BL;
 
             signHisto->SetBinContent(i, voltage);
             if(i<baselineCount){
@@ -80,6 +131,55 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21") {
             times.push_back(time);
         }
         signHisto->SetBins(nSamples, times.at(0), times.at(times.size()-1));
+
+
+        TLine *athrln = new TLine(times.front(), aThr, times.back(), aThr);
+        athrln->SetLineColor(kRed);
+        athrln->SetLineStyle(2);
+        athrln->SetLineWidth(2);
+
+        TLine *startline = new TLine(t0, signHisto->GetMinimum(), t0, signHisto->GetMaximum());
+        startline->SetLineColor(kRed);
+        startline->SetLineStyle(2);
+        startline->SetLineWidth(2);
+
+        TLine *stopline = new TLine(t0+timeWindow, signHisto->GetMinimum(), t0+timeWindow, signHisto->GetMaximum());
+        stopline->SetLineColor(kRed);
+        stopline->SetLineStyle(2);
+        stopline->SetLineWidth(2);
+
+        // Add TText to describe the lines
+        TText *bslnText = new TText(times.front(), aThr + 0.02 * (signHisto->GetMaximum() - signHisto->GetMinimum()), "Amplitude threshold");
+        bslnText->SetTextColor(kRed);
+        bslnText->SetTextSize(0.03);
+
+        TText *startlineText = new TText(t0 + 0.02 * (times.back() - times.front()), signHisto->GetMaximum(), "t0 (Start time)");
+        startlineText->SetTextColor(kRed);
+        startlineText->SetTextSize(0.03);
+
+        // TCanvas *c1 = new TCanvas();
+        // c1->cd();
+        // signHisto->SetTitle("");
+        // signHisto->SetXTitle("time (ps)");
+        // signHisto->SetYTitle("voltage (V)");
+        // signHisto->SetLineColor(kBlue);
+        // signHisto->Draw();
+        // athrln->Draw("same");
+        // startline->Draw("same");
+        // stopline->Draw("same");
+        // startlineText->Draw("same");
+        // bslnText->Draw("same");
+
+        // std::string tempInput;
+        // std::cout<<"continue (1), trash the signal (2) [the histo will be saved]"<<std::endl;
+        // std::cin>>tempInput;
+
+        // c1->Close();
+        // if(tempInput == "2"){
+        //     signHisto->Write();
+        //     j++;
+        //     continue;
+        // }
 
     //------------------------------------------------------------------------------
 
@@ -106,7 +206,6 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21") {
         Double_t stddev = std::sqrt(variance);
 
         //-------amplitude threshold - constant for the entire run.
-        aThr = 0.001;
         if(debug){std::cout<<"aThr = "<<aThr<<std::endl;}
 
     //3. t0&TOT
@@ -155,64 +254,28 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21") {
         Int_t binT1 = signHisto->FindBin(t1);
 
         Q = signHisto->Integral(binT0, binT1);
-        //if(Q < 1e-10){std::cout<<"Q = "<<Q<<"; iteration no. "<<j<<std::endl;}
         //////////////////////////////////////////////////////////////////////////////////////
-
-        TLine *bsln = new TLine(times.front(), aThr, times.back(), aThr);
-        bsln->SetLineColor(kRed);
-        bsln->SetLineStyle(2);
-        bsln->SetLineWidth(2);
-
-        TLine *startline = new TLine(t0, signHisto->GetMinimum(), t0, signHisto->GetMaximum());
-        startline->SetLineColor(kRed);
-        startline->SetLineStyle(2);
-        startline->SetLineWidth(2);
-
-        // Add TText to describe the lines
-        TText *bslnText = new TText(times.front(), aThr + 0.02 * (signHisto->GetMaximum() - signHisto->GetMinimum()), "Amplitude threshold");
-        bslnText->SetTextColor(kRed);
-        bslnText->SetTextSize(0.03);
-
-        TText *startlineText = new TText(t0 + 0.02 * (times.back() - times.front()), signHisto->GetMaximum(), "t0 (Start time)");
-        startlineText->SetTextColor(kRed);
-        startlineText->SetTextSize(0.03);
-
-        TCanvas *c1 = new TCanvas();
-        c1->cd();
-        signHisto->SetTitle("");
-        signHisto->SetXTitle("time (ps)");
-        signHisto->SetYTitle("voltage (V)");
-        signHisto->SetLineColor(kBlue);
-        signHisto->SetLineWidth(2);
-        signHisto->Draw();
-        bsln->Draw("same");
-        startline->Draw("same");
-        startlineText->Draw("same");
-        bslnText->Draw("same");
-
-        c1->Write();
 
         ms->set(t0, TOT, aMax, Q);
         if(debug){signHisto->Write();}
 
-        if(TMath::Abs(Q)<0.2){
-            signHisto->Write();
-            std::cout<<"Q < 1!!: "<<Q<<", iter no. "<<j<<std::endl;
-            std::cout<<"aThr = "<<aThr<<", t0 = "<<t0<<", bin no. "<<l<<", t1 = "<<t1<<", bin no. "<<l+timeWindow<<std::endl;
-            zeroChargeN++;
-            j++;
-            delete signHisto;
-            continue;
-        }
+        // if(TMath::Abs(Q)<0.2){
+        //     signHisto->Write();
+        //     std::cout<<"Q < 1!!: "<<Q<<", iter no. "<<j<<std::endl;
+        //     std::cout<<"aThr = "<<aThr<<", t0 = "<<t0<<", bin no. "<<l<<", t1 = "<<t1<<", bin no. "<<l+timeWindow<<std::endl;
+        //     zeroChargeN++;
+        //     j++;
+        //     delete signHisto;
+        //     continue;
+        // }
 
         signTree->Fill();
-        delete signHisto;
         j++;
     }
     std::cout<<"\n\n---------------------------------------"<<std::endl;
     std::cout<<"Number of histos with charge under 1 C: "<<zeroChargeN<<std::endl;
     signTree->Write();
-    signal->Close();code remains unchanged)
+    signal->Close();
     
     return kTRUE;
 }
