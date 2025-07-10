@@ -18,6 +18,14 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21") {
         return kFALSE;
     }
 
+    std::string paramsFilename = Form("%sscope_%s.txt", fileID.c_str(), no.c_str());
+    std::fstream outParams;
+    outParams.open(paramsFilename, ios::out);
+    if(!outParams){
+        std::cout<<"The params output file couldn't be opened!"<<std::endl;
+        return kFALSE;
+    }
+
     TFile *signal = new TFile(Form("%s%ssignalSaved.root", fileID.c_str(), no.c_str()), "RECREATE");
     TTree *signTree = new TTree("signTree", "signTree");
 
@@ -27,7 +35,7 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21") {
 
     Double_t aMax, aThr, Q, t0, t1, t2, TOT; 
 
-    // ... (rest of the //-------------------------------------------------------------------
+    //-------------------------------------------------------------------
     //  t0 is the start time of the signal, common for Q and TOT calculation, 
     //  t1 is the upper boundary for Q calculation (constant time window),
     //  t2 is the upper boundary for TOT calculated dynamically
@@ -52,11 +60,8 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21") {
     std::string line;
 
     getline(data, line);
-    std::cout<<line<<std::endl;
     getline(data, line);
-    std::cout<<line<<std::endl;
     getline(data, line);
-    std::cout<<line<<std::endl;
 
     TH1D *signHisto = new TH1D(Form("histo%i", j), Form("histo%i", j), nSamples, 0, nSamples);
     signHisto->SetDirectory(nullptr);
@@ -108,7 +113,8 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21") {
     std::cout<<"Baseline level: "<<BL<<std::endl;
     std::cout<<"----------------------------------------"<<std::endl;
     std::cout<<"Press enter to continue..."<<std::endl;
-    std::cin>>dummy;
+    std::cin.ignore();
+    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
     
     Int_t zeroChargeN = 0;
 
