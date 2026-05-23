@@ -6,7 +6,7 @@
 
 
 Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21") {
-    Bool_t debug = kTRUE;
+    Bool_t debug = kFALSE;
     std::cout.precision(12);
     
     std::string filename = Form("%sscope_%s.csv", fileID.c_str(), no.c_str());
@@ -18,12 +18,22 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21") {
         return kFALSE;
     }
 
-    std::string paramsFilename = Form("%sscope_%s.txt", fileID.c_str(), no.c_str());
+    std::string paramsFilename = Form("%sscope_%s_PARAMS.txt", fileID.c_str(), no.c_str());
     std::fstream outParams;
-    outParams.open(paramsFilename, ios::out);
-    if(!outParams){
-        std::cout<<"The params output file couldn't be opened!"<<std::endl;
-        return kFALSE;
+    bool paramsExist = false;
+    // Try to open for reading first
+    outParams.open(paramsFilename, ios::in);
+    if (outParams.good()) {
+        paramsExist = true;
+        std::cout<<"Reading analysis params from: "<<paramsFilename<<std::endl;
+    } else {
+        // If not exists, create for writing
+        outParams.open(paramsFilename, std::ios::out);
+        if(!outParams){
+            std::cout<<"The params output file couldn't be opened!"<<std::endl;
+            return kFALSE;
+        }
+        std::cout<<"Saving analysis params to: "<<paramsFilename<<std::endl;
     }
 
     TFile *signal = new TFile(Form("%s%ssignalSaved.root", fileID.c_str(), no.c_str()), "RECREATE");
@@ -33,7 +43,8 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21") {
     std::string branchName = Form("signal_%s", no.c_str());
     signTree->Branch(branchName.c_str(), &ms);
 
-    Double_t aMax, aThr, Q, t0, t1, t2, TOT; 
+    Double_t BL, aThr;
+    Double_t aMax, Q, t0, t1, t2, TOT; 
 
     //-------------------------------------------------------------------
     //  t0 is the start time of the signal, common for Q and TOT calculation, 
@@ -68,8 +79,6 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21") {
     std::vector <Double_t> baseline = {};
     std::vector <Double_t> times;   
 
-    Double_t BL;
-
     for(Int_t i = 0; i<nSamples; i++){
         std::getline(data, line, ',');
         time = line.empty() ? 0 : stod(line)*1e12;
@@ -92,16 +101,36 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21") {
     signHisto->SetLineColor(kBlue);
     signHisto->Draw();
     preview->Update();
-    preview->WaitPrimitive();
 
-    std::cout<<"baseline level: ";
-    std::cin>>BL;
+    // Only ask for BL/aThr for preview if params file doesn't exist
+    if (!paramsExist) {
+        std::cout<<"baseline level: ";
+        std::cin>>BL;
 
-    std::cout<<"\namplitude threshold: ";
-    std::cin>>aThr;
+        std::cout<<"\namplitude threshold: ";
+        std::cin>>aThr;
 
-    std::cout<<"\ntime window: ";
-    std::cin>>timeWindow;
+        std::cout<<"\ntime window: ";
+        std::cin>>timeWindow;
+
+        // Write BL and aThr to params file (once)
+        outParams << BL << " " << aThr << std::endl;
+        outParams.close();
+    } else {
+        // Read BL and aThr from params file
+        Double_t blRead = 0, athrRead = 0;
+        std::ifstream paramReader(paramsFilename);
+        paramReader >> blRead >> athrRead;
+        BL = blRead;
+        aThr = athrRead;
+        paramReader.close();
+
+        std::cout<<"Read baseline level: "<<BL<<std::endl;
+        std::cout<<"Read amplitude threshold: "<<aThr<<std::endl;
+
+        std::cout<<"\ntime window: ";
+        std::cin>>timeWindow;
+    }
 
     preview->Close();
     delete preview;
@@ -116,9 +145,43 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21") {
     std::cin.ignore();
     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
     
+    // Remove duplicate declaration of multiPreview
+    // TCanvas *multiPreview = new TCanvas("multiPreview", "First 20 Signals", 1200, 800);
+    // multiPreview->Divide(5,4);
+
     Int_t zeroChargeN = 0;
+    int padDrawn = 0;
+    int canvasIdx = 0;
+    TCanvas *multiPreview = nullptr;
+
+    // Add paramList declaration
+    std::vector<std::tuple<Double_t, Double_t, Double_t>> paramList;
+
+    // Read params if file exists
+    if (paramsExist) {
+        std::string paramLine;
+        while (std::getline(outParams, paramLine)) {
+            if (paramLine.empty()) continue;
+            std::istringstream iss(paramLine);
+            Double_t bl = 0, athr = 0, t0val = 0;
+            if (!(iss >> bl >> athr >> t0val)) continue; // skip malformed lines
+            paramList.push_back(std::make_tuple(bl, athr, t0val));
+        }
+        outParams.close();
+    }
 
     while(data){
+        // Create a new canvas for every batch of 20 signals
+        if (padDrawn % 20 == 0) {
+            if (multiPreview) {
+                multiPreview->Write(Form("multiPreview_%d", canvasIdx));
+                delete multiPreview;
+                canvasIdx++;
+            }
+            multiPreview = new TCanvas(Form("multiPreview_%d", canvasIdx), Form("Signals %d-%d", padDrawn+1, padDrawn+20), 1200, 800);
+            multiPreview->Divide(5,4);
+        }
+
         TH1D *signHisto = new TH1D(Form("histo%i", j), Form("histo%i", j), nSamples, 0, nSamples);
         signHisto->SetDirectory(nullptr);
         std::vector <Double_t> baseline = {};
@@ -128,7 +191,7 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21") {
             std::getline(data, line, ',');
             time = line.empty() ? 0 : stod(line)*1e12;
             std::getline(data, line, '\n');
-            voltage = line.empty() ? 0 : stod(line)-BL;
+            voltage = line.empty() ? 0 : stod(line);
 
             signHisto->SetBinContent(i, voltage);
             if(i<baselineCount){
@@ -138,85 +201,60 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21") {
         }
         signHisto->SetBins(nSamples, times.at(0), times.at(times.size()-1));
 
+        // BL and aThr are now always constant for all signals, read from file or user
+        // t0 is calculated per signal
 
+        // Calculate t0 for this signal
+        Int_t l = 1;
+        for(Int_t i = (signHisto->GetNbinsX())/2-(signHisto->GetNbinsX())*0.1; i<=nSamples; i++){
+            Double_t vAtI = signHisto->GetBinContent(i) - BL;
+            if(vAtI > aThr){
+                t0 = times.at(i-1);
+                break;
+            }
+            l++;
+        }
+
+        // Subtract baseline from signal before drawing and analysis
+        for(Int_t i = 0; i<nSamples; i++){
+            signHisto->SetBinContent(i, signHisto->GetBinContent(i) - BL);
+        }
+
+        // Draw signal on the appropriate pad
+        int padNum = (padDrawn % 20) + 1;
+        multiPreview->cd(padNum);
+        signHisto->SetTitle(Form("Signal %d", j));
+        signHisto->SetXTitle("time (ps)");
+        signHisto->SetYTitle("voltage (V)");
+        signHisto->SetLineColor(kBlue);
+        signHisto->Draw();
+
+        // Amplitude threshold line
         TLine *athrln = new TLine(times.front(), aThr, times.back(), aThr);
         athrln->SetLineColor(kRed);
         athrln->SetLineStyle(2);
         athrln->SetLineWidth(2);
+        athrln->Draw("same");
 
-        TLine *startline = new TLine(t0, signHisto->GetMinimum(), t0, signHisto->GetMaximum());
-        startline->SetLineColor(kRed);
-        startline->SetLineStyle(2);
-        startline->SetLineWidth(2);
+        // t0 line
+        TLine *t0line = new TLine(t0, signHisto->GetMinimum(), t0, signHisto->GetMaximum());
+        t0line->SetLineColor(kGreen+2);
+        t0line->SetLineStyle(2);
+        t0line->SetLineWidth(2);
+        t0line->Draw("same");
 
-        TLine *stopline = new TLine(t0+timeWindow, signHisto->GetMinimum(), t0+timeWindow, signHisto->GetMaximum());
-        stopline->SetLineColor(kRed);
-        stopline->SetLineStyle(2);
-        stopline->SetLineWidth(2);
+        padDrawn++;
 
-        // Add TText to describe the lines
-        TText *bslnText = new TText(times.front(), aThr + 0.02 * (signHisto->GetMaximum() - signHisto->GetMinimum()), "Amplitude threshold");
-        bslnText->SetTextColor(kRed);
-        bslnText->SetTextSize(0.03);
-
-        TText *startlineText = new TText(t0 + 0.02 * (times.back() - times.front()), signHisto->GetMaximum(), "t0 (Start time)");
-        startlineText->SetTextColor(kRed);
-        startlineText->SetTextSize(0.03);
-
-        // TCanvas *c1 = new TCanvas();
-        // c1->cd();
-        // signHisto->SetTitle("");
-        // signHisto->SetXTitle("time (ps)");
-        // signHisto->SetYTitle("voltage (V)");
-        // signHisto->SetLineColor(kBlue);
-        // signHisto->Draw();
-        // athrln->Draw("same");
-        // startline->Draw("same");
-        // stopline->Draw("same");
-        // startlineText->Draw("same");
-        // bslnText->Draw("same");
-
-        // std::string tempInput;
-        // std::cout<<"continue (1), trash the signal (2) [the histo will be saved]"<<std::endl;
-        // std::cin>>tempInput;
-
-        // c1->Close();
-        // if(tempInput == "2"){
-        //     signHisto->Write();
-        //     j++;
-        //     continue;
-        // }
-
-    //------------------------------------------------------------------------------
-
-    /*Calculating the parameters from the signals*/
-        
-    //1. amplitude
+        //------------------------------------------------------------------------------
+        // Calculating the parameters from the signals
+        // 1. amplitude
         aMax = signHisto->GetMaximum();
 
-    //2. amplitude threshold (bsln & variance not used atm)
-        
-        //-------baseline
-        Double_t sum = 0;
-        for (Double_t v : baseline) {
-            sum += v;
-        }
-        Double_t mean = sum / baseline.size();
-        
-        //-------variance & standrad deviation
-        Double_t variance = 0;
-        for (Double_t v : baseline) {
-            variance += (v - mean) * (v - mean);
-        }
-        variance /= baseline.size();
-        Double_t stddev = std::sqrt(variance);
-
-        //-------amplitude threshold - constant for the entire run.
+        // 2. amplitude threshold - constant for the entire run.
         if(debug){std::cout<<"aThr = "<<aThr<<std::endl;}
 
-    //3. t0&TOT
-        //-------t0
-        Int_t l = 1;
+        // 3. t0 & TOT
+        Int_t z = 1;
         for(Int_t i = 1; i<=nSamples; i++){
             Double_t vAtI = signHisto->GetBinContent(i);
             if(vAtI>(aThr)){
@@ -224,12 +262,10 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21") {
                 t0 = times.at(i-1);
                 break;
             }
-            l++;
+            z++;
         }
 
-        //std::cout<<"\n\n l = "<<l<<", thus l+275 = "<<l+275<<"\n\n"<<"iter no. "<<j<<"\n\n"<<std::endl;
-
-        //---------t1
+        //-------t1
         try{
             t1 = times.at(l+timeWindow);
         }
@@ -265,23 +301,21 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21") {
         ms->set(t0, TOT, aMax, Q);
         if(debug){signHisto->Write();}
 
-        // if(TMath::Abs(Q)<0.2){
-        //     signHisto->Write();
-        //     std::cout<<"Q < 1!!: "<<Q<<", iter no. "<<j<<std::endl;
-        //     std::cout<<"aThr = "<<aThr<<", t0 = "<<t0<<", bin no. "<<l<<", t1 = "<<t1<<", bin no. "<<l+timeWindow<<std::endl;
-        //     zeroChargeN++;
-        //     j++;
-        //     delete signHisto;
-        //     continue;
-        // }
-
         signTree->Fill();
         j++;
     }
+
+    // Write and clean up the last canvas if it exists
+    if (multiPreview) {
+        multiPreview->Write(Form("multiPreview_%d", canvasIdx));
+        delete multiPreview;
+    }
+
     std::cout<<"\n\n---------------------------------------"<<std::endl;
     std::cout<<"Number of histos with charge under 1 C: "<<zeroChargeN<<std::endl;
     signTree->Write();
     signal->Close();
+    if(outParams.is_open()) outParams.close();
     
     return kTRUE;
 }

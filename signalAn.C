@@ -174,6 +174,10 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
             sum += v;
         }
         Double_t mean = sum / baseline.size();
+
+        for (Int_t i = 1; i <= signHisto->GetNbinsX(); i++){
+            signHisto->AddBinContent(i, -mean);
+        }
         
         //-------variance & standrad deviation
         Double_t variance = 0;
@@ -184,7 +188,7 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
         Double_t stddev = std::sqrt(variance);
 
         //-------amplitude threshold - constant for the entire run.
-        aThr = 0.001;
+        aThr = 0.002;
         if(debug){std::cout<<"aThr = "<<aThr<<std::endl;}
 
     //3. t0&TOT
@@ -275,9 +279,9 @@ Bool_t saveSignal(std::string fileID = "20250217", std::string no = "21"){
         ms->set(t0, TOT, aMax, Q);
         if(debug){signHisto->Write();}
 
-        if(TMath::Abs(Q)<0.2){
+        if(TMath::Abs(Q)<0.002){
             signHisto->Write();
-            std::cout<<"Q < 1!!: "<<Q<<", iter no. "<<j<<std::endl;
+            std::cout<<"Q < 0.002!!: "<<Q<<", iter no. "<<j<<std::endl;
             std::cout<<"aThr = "<<aThr<<", t0 = "<<t0<<", bin no. "<<l<<", t1 = "<<t1<<", bin no. "<<l+timeWindow<<std::endl;
             zeroChargeN++;
             j++;
@@ -315,6 +319,11 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
         return kFALSE;
     }
 
+    Double_t norm = 1;
+    if(no == "24") norm = 801613786.2*1e-12;
+    if(no == "25") norm = 1120847016.3*1e-12;
+
+
     Double_t aMax, Q;
     Long_t t0, TOT;
     Int_t nEntries = tree->GetEntries();
@@ -331,7 +340,7 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
     Qup = 1.1*tree->GetMaximum("Q"); aMaxUp = 1.1*tree->GetMaximum("aMax"); TOTup = 1.1*tree->GetMaximum("TOT"); t0up = 1.1*tree->GetMaximum("t0");
     
     //creating histos
-    TH1D *Qh = new TH1D("Qh", "Q", 25, Qlow, Qup); //
+    TH1D *Qh = new TH1D("Qh", "Q", 100, -1, 2.5); //
     TH1D *aMaxh = new TH1D("aMaxh", "aMax", 20, aMaxLow, aMaxUp);
     TH1D *TOTh = new TH1D("TOTh", "TOT", 20, TOTlow, TOTup);
     TH1D *t0h = new TH1D("t0h", "t0", 100, t0low, t0up);
@@ -351,60 +360,89 @@ Bool_t histosMaking(std::string rootFile = "20250217", std::string no = "21"){
         Qt0h->Fill(Q, t0);
     }
 
+    TH1D *Qh_copy = (TH1D*)Qh->Clone("Qh_copy");
+
+    if(no == "24"){
+        
+        Qh_copy->SetTitle("Q; QDC (a.u.); counts/second");
+        auto maxVal = Qh_copy->GetMaximum();
+        std::cout<<"hej robimy to"<<std::endl;
+        for (int i = 1; i <= Qh_copy->GetNbinsX(); ++i) {
+            double content = Qh_copy->GetBinContent(i);
+            Qh_copy->SetBinContent(i, content * (23196.7/maxVal));
+        }
+
+        
+    }
+
     //fitting
     TF1 *aGaus = new TF1("aGaus", "gaus", aMaxLow, aMaxUp);
     TF1 *QGaus = new TF1("QGaus", "gaus", Qlow, Qup);
 
+    aGaus->SetParNames("Constant", "Mean (V)", "Sigma (V)");
+    QGaus->SetParNames("Constant", "Mean (C)", "Sigma (C)");
+
     TFitResultPtr aRes = aMaxh->Fit(aGaus, "S");
-    TFitResultPtr QRes = Qh->Fit(QGaus, "S V", "", Qlow, Qup);
+    //TFitResultPtr QRes = Qh->Fit(QGaus, "S V", "", Qlow, Qup);
+
 
     //drawing and saving the histos
     std::string outFilename = Form("%s_scope_%s_HISTOS.root", rootFile.c_str(), no.c_str());
     TFile *outfile = new TFile(outFilename.c_str(), "RECREATE");
 
-    std::string aParStr = Form("#splitline{mean = (%.5f #pm %.5f) C}{#splitline{sigma = (%.5f #pm %.5f) C}{norm = (%.0f #pm %.0f) a.u.}}",
+    std::string aParStr = Form("#splitline{mean = (%.5f #pm %.5f) V}{#splitline{sigma = (%.5f #pm %.5f) V}{constant = (%.0f #pm %.0f)}}",
                                aGaus->GetParameter(1), aGaus->GetParError(1),
                                aGaus->GetParameter(2), aGaus->GetParError(2),
                                aGaus->GetParameter(0), aGaus->GetParError(0));
     TLatex *aMaxPars = new TLatex();
 
-    std::string QParStr = Form("#splitline{mean = (%.3f #pm %.3f) C}{#splitline{sigma = (%.4f #pm %.4f) C}{norm = (%.0f #pm %.0f) a.u.}}",
+    std::string QParStr = Form("#splitline{mean = (%.3f #pm %.3f) C}{#splitline{sigma = (%.4f #pm %.4f) C}{constant = (%.0f #pm %.0f)}}",
                                QGaus->GetParameter(1), QGaus->GetParError(1),
                                QGaus->GetParameter(2), QGaus->GetParError(2),
                                QGaus->GetParameter(0), QGaus->GetParError(0));
     TLatex *QPars = new TLatex();
     //std::cout<<"QPars "<<QParStr<<std::endl;
 
+    Qh_copy->Write();
+
     TCanvas *c1 = new TCanvas();
     c1->Divide(2, 2);
 
     c1->cd(1);
     gStyle->SetOptStat(1);
-    t0h->SetTitle("t0; t0 (ps); counts (a.u.)");
+    t0h->SetTitle("t0; t0 (ps); counts");
     t0h->Draw();
     t0h->Write();
 
     c1->cd(2);
     gStyle->SetOptStat(1);
-    TOTh->SetTitle("TOT; TOT (ps); counts (a.u.)");
+    TOTh->SetTitle("TOT; TOT (ps); counts");
     TOTh->Sumw2();
     TOTh->Draw();
     TOTh->Write();
 
     c1->cd(3);
     gStyle->SetOptStat(1);
-    Qh->SetTitle("Q; Q (C); counts (a.u.)");
-    Qh->Sumw2();
+    gStyle->SetOptFit(111);
+    Qh->SetTitle("Q; Q (C); counts/second");
+    
+    for (int i = 1; i <= Qh->GetNbinsX(); ++i) {
+        double content = Qh->GetBinContent(i);
+        std::cout<<content<<std::endl;
+        Qh->SetBinContent(i, content / norm);
+    }
+    //Qh->Sumw2();
     Qh->Draw();
-    QPars->DrawLatexNDC(0.55, 0.8, QParStr.c_str()); // Use DrawLatexNDC for TLatex
+    //QPars->DrawLatexNDC(0.55, 0.8, QParStr.c_str()); // Use DrawLatexNDC for TLatex
     Qh->Write();
 
     c1->cd(4);
     gStyle->SetOptStat(1);
-    aMaxh->SetTitle("aMax; aMax (V); counts (a.u.)");
-    aMaxh->Sumw2();
+    gStyle->SetOptFit(111);
+    aMaxh->SetTitle("aMax; aMax (V); counts");
+    //aMaxh->Sumw2();
     aMaxh->Draw();
-    aMaxPars->DrawLatexNDC(0.55, 0.8, aParStr.c_str()); // Use DrawLatexNDC for TLatex
+    //aMaxPars->DrawLatexNDC(0.55, 0.8, aParStr.c_str()); // Use DrawLatexNDC for TLatex
     aMaxh->Write();
 
     c1->Write();
